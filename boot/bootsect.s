@@ -1,26 +1,19 @@
 !
-! SYS_SIZE is the number of clicks (16 bytes) to be loaded.
-! 0x3000 is 0x30000 bytes = 196kB, more than enough for current
-! versions of linux
+! SYS_SIZE 是要加载的字节数（16字节单位）.
+! 0x3000 是 0x30000 字节 = 196kB，对于当前版本的 Linux 来说，足够了
 !
 SYSSIZE = 0x3000
 !
 !	bootsect.s		(C) 1991 Linus Torvalds
+! bootsect.s被bios-startup程序加载到0x7c00位置，然后把自己移动到0x90000位置，并跳转到此处执行。
 !
-! bootsect.s is loaded at 0x7c00 by the bios-startup routines, and moves
-! iself out of the way to address 0x90000, and jumps there.
+! 然后使用BIOS的终端程序将setup.s加载到它后面(0x90200)，将system加载到(0x10000)
 !
-! It then loads 'setup' directly after itself (0x90200), and the system
-! at 0x10000, using BIOS interrupts. 
+! 注意! 当前系统最多8*65546字节，即使以后应该也不会有问题。我希望保持内核简洁。
+! 内核大小512kB应该就够用了，尤其是他不包含类似minux系统中的cache buffer
 !
-! NOTE! currently system is at most 8*65536 bytes long. This should be no
-! problem, even in the future. I want to keep it simple. This 512 kB
-! kernel size should be enough, especially as this doesn't contain the
-! buffer cache as in minix
-!
-! The loader has been made as simple as possible, and continuos
-! read errors will result in a unbreakable loop. Reboot by hand. It
-! loads pretty fast by getting whole sectors at a time whenever possible.
+! loader程序需要设计的尽可能简单，读取错误时会导致死循环，且不可中断。只能手动重启
+! 一次尽可能读取一整个sectors，可以加载的尽可能快。
 
 .globl begtext, begdata, begbss, endtext, enddata, endbss
 .text
@@ -31,15 +24,30 @@ begdata:
 begbss:
 .text
 
-SETUPLEN = 4				! nr of setup-sectors
-BOOTSEG  = 0x07c0			! original address of boot-sector
-INITSEG  = 0x9000			! we move boot here - out of the way
-SETUPSEG = 0x9020			! setup starts here
-SYSSEG   = 0x1000			! system loaded at 0x10000 (65536).
-ENDSEG   = SYSSEG + SYSSIZE		! where to stop loading
+! 基本内存布局
+SETUPLEN = 4				! setup-sectors数量，占四个扇区
+BOOTSEG  = 0x07c0			! boot-sector初始地址
+INITSEG  = 0x9000			! boot将移动到这里
+SETUPSEG = 0x9020			! setup从这里开始
+SYSSEG   = 0x1000			! system加载到0x10000 (65536)
+ENDSEG   = SYSSEG + SYSSIZE	! 加载结束的地址
 
-! ROOT_DEV:	0x000 - same type of floppy as boot.
-!		0x301 - first partition on first drive etc
+! FFFFF:
+!   |      setup
+! 90200
+!   |      final bootloader
+! 90000:
+!	|      none
+! 40000:   
+!   |      system
+! 10000:    
+!   |      original bootloader 
+! 07c00:
+!   |      none
+! 00000:  
+
+! ROOT_DEV:	0x000 - 与启动时相同的软盘
+!		0x301 - 第一个驱动器上的第一个分区等
 ROOT_DEV = 0x306
 
 entry _start
@@ -57,12 +65,11 @@ _start:
 go:	mov	ax,cs
 	mov	ds,ax
 	mov	es,ax
-! put stack at 0x9ff00.
+! 设置栈顶为0x9ff00
 	mov	ss,ax
-	mov	sp,#0xFF00		! arbitrary value >>512
+	mov	sp,#0xFF00		! 随便设置的值 >>512
 
-! load the setup-sectors directly after the bootblock.
-! Note that 'es' is already set up.
+! 直接把setup-sectors加载到bootblock后面
 
 load_setup:
 	mov	dx,#0x0000		! drive 0, head 0
