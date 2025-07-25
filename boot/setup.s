@@ -30,8 +30,7 @@ begbss:
 entry start
 start:
 
-! ok, the read went well so we get current cursor position and save it for
-! posterity.
+! 保存光标位置
 
 	mov	ax,#INITSEG	! this is done in bootsect already, but...
 	mov	ds,ax
@@ -39,20 +38,20 @@ start:
 	xor	bh,bh
 	int	0x10		! save it in known place, con_init fetches
 	mov	[0],dx		! it from 0x90000.
-! Get memory size (extended mem, kB)
+! 获取内存大小(扩展内存, kB)  （只1MB以外的部分。实模式20位地址线，最大访问1MB，其余认为是扩展内存）
 
 	mov	ah,#0x88
 	int	0x15
 	mov	[2],ax
 
-! Get video-card data:
+! 获取显卡数据
 
 	mov	ah,#0x0f
 	int	0x10
 	mov	[4],bx		! bh = display page
 	mov	[6],ax		! al = video mode, ah = window width
 
-! check for EGA/VGA and some config parameters
+! 检测EGA/VGA显卡配置参数
 
 	mov	ah,#0x12
 	mov	bl,#0x10
@@ -61,7 +60,7 @@ start:
 	mov	[10],bx
 	mov	[12],cx
 
-! Get hd0 data
+! 获取hd0数据
 
 	mov	ax,#0x0000
 	mov	ds,ax
@@ -73,7 +72,7 @@ start:
 	rep
 	movsb
 
-! Get hd1 data
+! 获取hd1数据
 
 	mov	ax,#0x0000
 	mov	ds,ax
@@ -85,7 +84,7 @@ start:
 	rep
 	movsb
 
-! Check that there IS a hd1 :-)
+! 检查hd1是否存在
 
 	mov	ax,#0x01500
 	mov	dl,#0x81
@@ -103,11 +102,11 @@ no_disk1:
 	stosb
 is_disk1:
 
-! now we want to move to protected mode ...
+! 准备切换保护模式
 
-	cli			! no interrupts allowed !
+	cli			! 关中断
 
-! first we move the system to it's rightful place
+! 先把system移动到正确的位置。即0x0处。（会覆盖BIOS中断程序）
 
 	mov	ax,#0x0000
 	cld			! 'direction'=0, movs moves forward
@@ -124,7 +123,7 @@ do_move:
 	movsw
 	jmp	do_move
 
-! then we load the segment descriptors
+! 然后加载段描述符
 
 end_move:
 	mov	ax,#SETUPSEG	! right, forgot this at first. didn't work :-)
@@ -190,9 +189,9 @@ end_move:
 	lmsw	ax		! This is it!
 	jmpi	0,8		! jmp offset 0 of segment 8 (cs)
 
-! This routine checks that the keyboard command queue is empty
-! No timeout is used - if this hangs there is something wrong with
-! the machine, and we probably couldn't proceed anyway.
+! 这个程序检查键盘命令队列是否为空
+! 没有使用超时——如果挂起，说明机器出了问题，我们可能无法继续。
+
 empty_8042:
 	.word	0x00eb,0x00eb
 	in	al,#0x64	! 8042 status port

@@ -50,6 +50,8 @@ ENDSEG   = SYSSEG + SYSSIZE	! 加载结束的地址
 !		0x301 - 第一个驱动器上的第一个分区等
 ROOT_DEV = 0x306
 
+!!! 把bootsect从0x07c0移动到0x9000，并初始化栈
+
 entry _start
 _start:
 	mov	ax,#BOOTSEG
@@ -69,7 +71,7 @@ go:	mov	ax,cs
 	mov	ss,ax
 	mov	sp,#0xFF00		! 随便设置的值 >>512
 
-! 直接把setup-sectors加载到bootblock后面
+! 直接把setup-sectors加载到bootblock后面，失败就反复加载
 
 load_setup:
 	mov	dx,#0x0000		! drive 0, head 0
@@ -84,8 +86,8 @@ load_setup:
 	j	load_setup
 
 ok_load_setup:
-
-! Get disk drive parameters, specifically nr of sectors/track
+!!! 加载成功后读磁盘信息存到sectors变量中，打印提示信息，加载system
+! 加载磁盘驱动参数，主要是每磁道的扇区数
 
 	mov	dl,#0x00
 	mov	ax,#0x0800		! AH=8 is get drive parameters
@@ -96,7 +98,7 @@ ok_load_setup:
 	mov	ax,#INITSEG
 	mov	es,ax
 
-! Print some inane message
+! 打印提示信息
 
 	mov	ah,#0x03		! read cursor pos
 	xor	bh,bh
@@ -108,18 +110,15 @@ ok_load_setup:
 	mov	ax,#0x1301		! write string, move cursor
 	int	0x10
 
-! ok, we've written the message, now
-! we want to load the system (at 0x10000)
+! 已经打印了调试信息，现在准备加载system到0x10000处
 
 	mov	ax,#SYSSEG
 	mov	es,ax		! segment of 0x010000
 	call	read_it
 	call	kill_motor
 
-! After that we check which root-device to use. If the device is
-! defined (!= 0), nothing is done and the given device is used.
-! Otherwise, either /dev/PS0 (2,28) or /dev/at0 (2,8), depending
-! on the number of sectors that the BIOS reports currently.
+! 之后检查要使用哪个root-device。 如果定义了device直接用，啥也不做
+! 没定义的话， BIOS当前报告的扇区数量，使用/dev/PS0 (2,28) 或 /dev/at0 (2,8)
 
 	seg cs
 	mov	ax,root_dev
@@ -139,15 +138,11 @@ root_defined:
 	seg cs
 	mov	root_dev,ax
 
-! after that (everyting loaded), we jump to
-! the setup-routine loaded directly after
-! the bootblock:
+! 之后（所有数据全部加载完成），跳转到被直接加载在bootblock后面的setup程序
 
 	jmpi	0,SETUPSEG
 
-! This routine loads the system at address 0x10000, making sure
-! no 64kB boundaries are crossed. We try to load it as fast as
-! possible, loading whole tracks whenever we can.
+! 这个程序把system加载在了0x10000, 确保不跨越64KB的边界. 尽可能快的加载系统，只要允许就全部加载。
 !
 ! in:	es - starting address segment (normally 0x1000)
 !
